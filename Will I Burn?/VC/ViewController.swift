@@ -10,6 +10,7 @@ import UIKit
 import MapKit
 import CoreData
 import Alamofire
+import UserNotifications
 
 class ViewController: UIViewController, CLLocationManagerDelegate {
 
@@ -21,6 +22,8 @@ class ViewController: UIViewController, CLLocationManagerDelegate {
     @IBOutlet weak var loadingLabel: UILabel!
     @IBOutlet weak var activityIndicator: UIActivityIndicatorView!
     @IBOutlet weak var currentUVLabel: UILabel!
+    
+    @IBOutlet weak var loadingView: UIView!
     
     // Variables
     let locationManager = CLLocationManager()
@@ -39,13 +42,15 @@ class ViewController: UIViewController, CLLocationManagerDelegate {
         return .lightContent
     }
     
+    var burnTimeMinutes: Int = 5
+    
     // MARK: - Loading Views
     override func viewDidLoad() {
         super.viewDidLoad()
         setupLocationManager()
         getLocation()
         updateSkinTypeLabel()
-        
+        loadingView.layer.cornerRadius = 8.0
     }
     
   
@@ -68,6 +73,27 @@ class ViewController: UIViewController, CLLocationManagerDelegate {
         self.present(alert, animated: true, completion: nil)
     }
     
+    @IBAction func alertButtonAction(_ sender: UIButton) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { (granted, error) in
+            if !granted {
+                let alert = UIAlertController(title: "Permission needed", message: "You have to turn on notifications so we can remind you. You can enable it in settings.", preferredStyle: .alert)
+                let ok = UIAlertAction(title: "OK", style: .default, handler: nil)
+                alert.addAction(ok)
+                self.present(alert, animated: true, completion: nil)
+                return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = "Time up!"
+            content.body = "You are begining to burn. Please get into the shade or use strong sunblock and cover up."
+            content.sound = UNNotificationSound.default()
+            
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(self.burnTimeMinutes*60), repeats: false)
+            let request = UNNotificationRequest(identifier: "burnNotification", content: content, trigger: trigger)
+            center.add(request, withCompletionHandler: nil)
+        }
+    }
+    
     
 
     // MARK: - My functions
@@ -76,20 +102,24 @@ class ViewController: UIViewController, CLLocationManagerDelegate {
         DispatchQueue.main.async {
             
         if !dataSuccess {
+            self.timeLabel.isHidden = true
+            self.loadingView.isHidden = false
             self.loadingLabel.isHidden = false
             self.activityIndicator.isHidden = false
-            self.loadingLabel.text = "Failed. Retrying."
+            self.loadingLabel.text = "Retrying..."
             self.getWeatherData()
             return
         }
+            self.timeLabel.isHidden = true
+            self.loadingView.isHidden = false
             self.loadingLabel.isHidden = false
             self.activityIndicator.isHidden = false
             self.activityIndicator.stopAnimating()
-            self.loadingLabel.text = "Got UV Data"
-            let burnTime = self.calculateBurnTime()
+            self.loadingLabel.text = "Getting UV Data"
+            self.burnTimeMinutes = self.calculateBurnTime()
             self.timeLabel.text = """
             Burn Time
-            \(burnTime) mins
+            \(self.burnTimeMinutes) mins
             """
             
         }
@@ -141,8 +171,10 @@ class ViewController: UIViewController, CLLocationManagerDelegate {
                         self.showActivityIndicator(dataSuccess: true)
                         let when = DispatchTime.now() + 1
                         DispatchQueue.main.asyncAfter(deadline: when) {
+                            self.loadingView.isHidden = true
                             self.loadingLabel.isHidden = true
                             self.activityIndicator.isHidden = true
+                            self.timeLabel.isHidden = false
                         }
                         return
                     }
